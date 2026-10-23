@@ -1,0 +1,261 @@
+{
+  "schema_version": 1,
+  "weight_policy": {
+    "version": 1,
+    "basis": "business_priority",
+    "core_min_share": 0.5
+  },
+  "gate_tests": [
+    "test_outputs.py::test_recovers_hidden_layer_order",
+    "test_outputs.py::test_recovers_each_sensor_gain",
+    "test_outputs.py::test_recovers_each_sensor_offset",
+    "test_outputs.py::test_predicts_future_sensor_temperatures"
+  ],
+  "tests": {
+    "test_outputs.py::test_places_nonlinear_curves_in_recovered_order": {
+      "weight": 0.11,
+      "priority": "core",
+      "rationale": "非线性导热曲线必须随恢复层序输出，否则炉壁材料档案会被错挂"
+    },
+    "test_outputs.py::test_recovers_temperature_coefficients_in_order": {
+      "weight": 0.11,
+      "priority": "core",
+      "rationale": "温度系数决定升温后热导变化，层序错挂会让预测趋势反向"
+    },
+    "test_outputs.py::test_preserves_forecast_time_order": {
+      "weight": 0.01,
+      "priority": "recovery",
+      "rationale": "预测时刻顺序必须保持，否则停热曲线的业务时间轴会被重排"
+    },
+    "test_outputs.py::test_emits_exact_result_schema": {
+      "weight": 0.01,
+      "priority": "schema",
+      "rationale": "装载器依赖精确结果键集合读取层序与预测，字段漂移会阻断交接"
+    },
+    "test_outputs.py::test_emits_exact_layer_schema": {
+      "weight": 0.01,
+      "priority": "schema",
+      "rationale": "层序记录必须逐项给出槽位与材料编号，避免装配单无法回填"
+    },
+    "test_outputs.py::test_emits_exact_calibration_schema": {
+      "weight": 0.01,
+      "priority": "schema",
+      "rationale": "传感器校准记录必须逐项可读，才能追溯增益和偏移来源"
+    },
+    "test_outputs.py::test_emits_exact_forecast_schema": {
+      "weight": 0.01,
+      "priority": "recovery",
+      "rationale": "预测记录必须按传感器分组并保持样行结构，供下一班直接装载"
+    },
+    "test_outputs.py::test_emits_exact_fit_schema": {
+      "weight": 0.01,
+      "priority": "schema",
+      "rationale": "拟合摘要用于判断本批次证据是否可接受，键集合必须稳定"
+    },
+    "test_outputs.py::test_fit_error_is_within_limit": {
+      "weight": 0.11,
+      "priority": "core",
+      "rationale": "训练观测误差决定联合反演是否真正解释了多频温度史"
+    },
+    "test_outputs.py::test_total_heat_matches_flux_integral": {
+      "weight": 0.11,
+      "priority": "core",
+      "rationale": "累计热量必须与输入热流积分一致，现场能量账才能闭合"
+    },
+    "test_outputs.py::test_heat_balance_error_is_within_limit": {
+      "weight": 0.11,
+      "priority": "core",
+      "rationale": "总热量偏差是输入聚合与分段热史一致性的直接证据"
+    },
+    "test_outputs.py::test_ledger_contains_both_digests": {
+      "weight": 0.01,
+      "priority": "recovery",
+      "rationale": "账本摘要绑定输入与结果字节，保证复核批次可追溯"
+    },
+    "test_outputs.py::test_repeated_identical_batch_does_not_append": {
+      "weight": 0.01,
+      "priority": "recovery",
+      "rationale": "重复提交不得生成重复完成记录，避免交接账虚增批次"
+    },
+    "test_outputs.py::test_second_batch_appends_another_record": {
+      "weight": 0.01,
+      "priority": "recovery",
+      "rationale": "不同批次必须各留一条记录，支持后续炉壁变更追溯"
+    },
+    "test_outputs.py::test_accepts_five_layer_limit": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "五层上限是本题公开能力边界，边界内必须完整处理"
+    },
+    "test_outputs.py::test_rejects_six_layer_rows": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "六层输入会突破当前热网络规模，必须拒绝并保护旧结果"
+    },
+    "test_outputs.py::test_accepts_three_segment_limit": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "三段上限覆盖完整多频激励，边界输入必须可计算"
+    },
+    "test_outputs.py::test_rejects_four_segments": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "第四段会突破公开记录协议，继续处理会曲解热史"
+    },
+    "test_outputs.py::test_accepts_120_samples_per_segment": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "每段 120 点是公开最大采样规模，应能完成反演"
+    },
+    "test_outputs.py::test_rejects_121_samples_per_segment": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "超过采样上限会突破记录器能力，必须提前阻断"
+    },
+    "test_outputs.py::test_accepts_40_forecast_points": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "四十个预测点是公开最大预测规模，必须正常输出"
+    },
+    "test_outputs.py::test_rejects_41_forecast_points": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "超过预测点上限会造成交接缓冲溢出，必须拒绝"
+    },
+    "test_outputs.py::test_rejects_top_level_extra_key": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "顶层额外字段会混淆输入版本，必须按精确 schema 拒收"
+    },
+    "test_outputs.py::test_rejects_missing_segments_key": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "缺少三段热史时继续推断会虚构激励条件与停热预测结果"
+    },
+    "test_outputs.py::test_rejects_duplicate_json_key": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "重复键会让不同读取器看到不同热工参数，必须拒收"
+    },
+    "test_outputs.py::test_rejects_boolean_thickness": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "布尔厚度会被误当作数值并生成不存在的热阻"
+    },
+    "test_outputs.py::test_rejects_unsorted_forecast_times": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "乱序预测时刻会破坏停热过程的连续积分并误导下一班操作"
+    },
+    "test_outputs.py::test_rejects_nonuniform_segment_time_axis": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "非等步长轴会让同一激励段的采样权重不可比较"
+    },
+    "test_outputs.py::test_rejects_wrong_sensor_count": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "传感器数量不足会使界面温度与校准记录错位"
+    },
+    "test_outputs.py::test_rejects_ambiguous_material_signature": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "材料签名重复会让层序和传感器对应不唯一，必须提前拒绝"
+    },
+    "test_outputs.py::test_rejects_inconsistent_total_heat": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "聚合热量与分段积分矛盾说明输入记录不完整"
+    },
+    "test_outputs.py::test_invalid_batch_preserves_previous_files": {
+      "weight": 0.01,
+      "priority": "recovery",
+      "rationale": "拒收新批次时必须完整保留上一版可运行报告与交接账本"
+    },
+    "test_outputs.py::test_ledger_directory_failure_preserves_output": {
+      "weight": 0.01,
+      "priority": "recovery",
+      "rationale": "账本安装失败时必须回滚结果文件，不能留下已替换的新报告"
+    },
+    "test_outputs.py::test_malformed_ledger_preserves_previous_output": {
+      "weight": 0.01,
+      "priority": "recovery",
+      "rationale": "损坏账本必须阻断发布，并保持旧结果文件的可追溯原始字节"
+    },
+    "test_outputs.py::test_result_serialization_is_compact_sorted_single_line": {
+      "weight": 0.01,
+      "priority": "schema",
+      "rationale": "装载器按原始字节复核摘要，序列化外观必须稳定"
+    },
+    "test_outputs.py::test_success_path_is_silent": {
+      "weight": 0.01,
+      "priority": "schema",
+      "rationale": "成功时不得向自动装载流程写入额外诊断文本"
+    },
+    "test_outputs.py::test_case_identifier_is_preserved": {
+      "weight": 0.01,
+      "priority": "schema",
+      "rationale": "批次号必须原样写回，避免报告挂到另一段炉壁"
+    },
+    "test_outputs.py::test_limits_object_rejects_extra_key": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "限制对象多出字段说明单位或版本口径不一致"
+    },
+    "test_outputs.py::test_input_declares_five_calibrated_channels": {
+      "weight": 0.01,
+      "priority": "schema",
+      "rationale": "输入必须完整保留五个传感器的独立温度通道，否则界面校准无从恢复"
+    },
+    "test_outputs.py::test_rejects_wrong_schema_version": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "错误版本号可能来自不兼容采集器，继续读取会误解释非线性热网络"
+    },
+    "test_outputs.py::test_rejects_extra_coupon_key": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "材料卡多出字段会污染热参数来源，必须在反演前阻断"
+    },
+    "test_outputs.py::test_rejects_extra_sample_key": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "热史样行多出字段会破坏固定记录格式与单位口径"
+    },
+    "test_outputs.py::test_rejects_extra_aggregate_key": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "累计热量对象混入额外字段说明版本或单位口径不一致"
+    },
+    "test_outputs.py::test_rejects_wrong_sample_count": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "样本计数错误会让交接记录与实际热史长度不一致"
+    },
+    "test_outputs.py::test_rejects_extra_forecast_key": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "预测对象多出字段会破坏下一班装载器的精确读取协议"
+    },
+    "test_outputs.py::test_calibration_rows_have_three_exact_fields": {
+      "weight": 0.01,
+      "priority": "schema",
+      "rationale": "校准行必须只含传感器编号、增益和偏移，避免装载歧义"
+    },
+    "test_outputs.py::test_rejects_segment_end_after_thirty_seconds": {
+      "weight": 0.01,
+      "priority": "boundary",
+      "rationale": "超过三十秒的热史会突破公开记录窗口并截断后续积分"
+    },
+    "test_outputs.py::test_ledger_rows_are_compact_single_lines": {
+      "weight": 0.01,
+      "priority": "recovery",
+      "rationale": "账本必须保持紧凑单行格式，才能按原始字节复核交接记录"
+    },
+    "test_outputs.py::test_full_batch_completes_within_public_limit": {
+      "weight": 0.02,
+      "priority": "recovery",
+      "rationale": "整批反演必须在公开时限内完成，否则停热预测赶不上下一班操作"
+    }
+  }
+}

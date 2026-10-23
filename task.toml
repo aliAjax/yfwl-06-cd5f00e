@@ -1,0 +1,27 @@
+schema_version = "1.3"
+
+[task]
+name = "local/composite-wall-thermal-recovery"
+description = "从三段非线性瞬态温度史恢复五层顺序、逐传感器刻度并预测停热温度"
+authors = [{ name = "batch-b" }]
+keywords = ["physics", "heat-transfer", "assignment", "pytest"]
+
+[agent]
+timeout_sec = 3600
+
+[environment]
+build_timeout_sec = 600
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+gpus = 0
+allow_internet = true
+
+[verifier]
+timeout_sec = 180
+
+[metadata]
+difficulty = "expert"
+category = "physics-simulation"
+tags = ["heat-transfer", "transient-inversion", "atomic-write", "thermal-modeling"]
+expert_time_estimate = "80m"
