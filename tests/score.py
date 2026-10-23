@@ -10,9 +10,11 @@ completed runs with passing gates receive the weighted pass fraction.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
+import stat
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -204,15 +206,105 @@ def _canonical_case_id(testcase: ET.Element) -> str:
     return "::".join([file_path, *class_parts, name])
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _declared_count(suites: list[ET.Element], attribute: str) -> int:
+    total = 0
+    for suite in suites:
+        raw = suite.get(attribute)
+        if raw is None:
+            raise ScoringError(f"JUnit testsuite is missing {attribute}")
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ScoringError(f"JUnit testsuite {attribute} is not an integer") from exc
+        if value < 0:
+            raise ScoringError(f"JUnit testsuite {attribute} cannot be negative")
+        total += value
+    return total
+
+
+def validate_provenance(
+    provenance_path: Path,
+    junit_path: Path,
+    config_path: Path,
+    tests_path: Path,
+) -> dict[str, int | str]:
+    """Validate that the accepted report came from the protected verifier run."""
+    try:
+        payload = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ScoringError(f"cannot read verifier provenance: {exc}") from exc
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        raise ScoringError("verifier provenance schema is invalid")
+    report_stat = junit_path.stat()
+    verifier_uid = os.getuid()
+    if report_stat.st_uid != verifier_uid:
+        raise ScoringError("JUnit report must be owned by the active verifier user")
+    if stat.S_IMODE(report_stat.st_mode) != 0o600:
+        raise ScoringError("JUnit report must use mode 0600")
+    checks = {
+        "report_sha256": _sha256(junit_path),
+        "report_size": report_stat.st_size,
+        "config_sha256": _sha256(config_path),
+        "tests_sha256": _sha256(tests_path),
+    }
+    for key, expected in checks.items():
+        if payload.get(key) != expected:
+            raise ScoringError(f"verifier provenance mismatch: {key}")
+    if payload.get("verifier_uid") != verifier_uid:
+        raise ScoringError("verifier uid does not match the active scorer")
+    if payload.get("pytest_uid") != verifier_uid:
+        raise ScoringError("pytest uid does not match the active verifier")
+    candidate_uid = payload.get("candidate_uid")
+    if not isinstance(candidate_uid, int) or candidate_uid == 0:
+        raise ScoringError("candidate must not execute with uid 0")
+    if verifier_uid == 0 and candidate_uid == verifier_uid:
+        raise ScoringError("root verifier must isolate the candidate uid")
+    if payload.get("pytest_returncode") not in (0, 1):
+        raise ScoringError("pytest did not complete with a scoreable status")
+    return checks
+
+
 def parse_junit(path: Path) -> dict[str, str]:
-    """Return canonical test IDs and pass/fail outcomes."""
+    """Return canonical test IDs and pass/fail outcomes after count validation."""
     try:
         root = ET.parse(path).getroot()
     except (OSError, ET.ParseError) as exc:
         raise ScoringError(f"cannot parse JUnit report: {exc}") from exc
 
+    if root.tag not in {"testsuite", "testsuites"}:
+        raise ScoringError("JUnit root must be testsuite or testsuites")
+    suites = list(root.iter("testsuite"))
+    if not suites:
+        raise ScoringError("JUnit report contains no testsuite")
+    testcases = list(root.iter("testcase"))
+    actual_failures = sum(1 for case in testcases if case.find("failure") is not None)
+    actual_errors = sum(1 for case in testcases if case.find("error") is not None)
+    actual_skipped = sum(1 for case in testcases if case.find("skipped") is not None)
+    declared_tests = _declared_count(suites, "tests")
+    declared_failures = _declared_count(suites, "failures")
+    declared_errors = _declared_count(suites, "errors")
+    declared_skipped = _declared_count(suites, "skipped")
+    if declared_tests != len(testcases):
+        raise ScoringError(
+            "JUnit declared test count does not equal executed testcase count"
+        )
+    if declared_failures != actual_failures:
+        raise ScoringError("JUnit declared failure count does not match testcases")
+    if declared_errors != actual_errors:
+        raise ScoringError("JUnit declared error count does not match testcases")
+    if declared_skipped != actual_skipped:
+        raise ScoringError("JUnit declared skipped count does not match testcases")
+
     outcomes: dict[str, str] = {}
-    for testcase in root.iter("testcase"):
+    for testcase in testcases:
         case_id = _canonical_case_id(testcase)
         if case_id in outcomes:
             raise ScoringError(f"JUnit report contains duplicate testcase: {case_id}")
@@ -282,11 +374,25 @@ def compute_reward(config: dict[str, Any], outcomes: dict[str, str]) -> dict[str
     }
 
 
-def evaluate(config_path: Path, junit_path: Path) -> dict[str, Any]:
+def evaluate(
+    config_path: Path,
+    junit_path: Path,
+    provenance_path: Path | None = None,
+    tests_path: Path = Path("/tests/test_outputs.py"),
+) -> dict[str, Any]:
     """Load both inputs, validate their exact case set, and score them."""
     config = load_scoring_config(config_path)
+    provenance = (
+        validate_provenance(provenance_path, junit_path, config_path, tests_path)
+        if provenance_path is not None
+        else {}
+    )
     outcomes = parse_junit(junit_path)
-    return compute_reward(config, outcomes)
+    report = compute_reward(config, outcomes)
+    report["executed_case_count"] = len(outcomes)
+    report["failed_case_count"] = sum(1 for status in outcomes.values() if status == "fail")
+    report["provenance"] = provenance
+    return report
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -324,12 +430,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--junit", required=True, type=Path)
+    parser.add_argument("--provenance", type=Path)
     parser.add_argument("--report-out", required=True, type=Path)
     parser.add_argument("--reward-out", required=True, type=Path)
     args = parser.parse_args(argv)
 
     try:
-        report = evaluate(args.config, args.junit)
+        report = evaluate(
+            args.config,
+            args.junit,
+            args.provenance,
+            Path("/tests/test_outputs.py"),
+        )
     except ScoringError as exc:
         report = {
             "schema_version": CONFIG_SCHEMA_VERSION,

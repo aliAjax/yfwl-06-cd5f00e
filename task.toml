@@ -19,6 +19,7 @@ allow_internet = true
 
 [verifier]
 timeout_sec = 180
+user = "root"
 
 [metadata]
 difficulty = "expert"

@@ -4,13 +4,19 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tmux asciinema \
+    && apt-get install -y --no-install-recommends python3 python3-pytest tmux asciinema util-linux procps \
     && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --gid 10001 worker \
+    && useradd --create-home --uid 10001 --gid 10001 worker \
+    && groupadd --gid 10002 testrunner \
+    && useradd --uid 10002 --gid 10002 --no-create-home --shell /usr/sbin/nologin testrunner
 
 WORKDIR /app
 COPY app/ /app/
 
 RUN mkdir -p /logs/verifier
+RUN chown -R worker:worker /app /logs/verifier
 
+USER worker
 CMD ["sleep", "infinity"]
-
